@@ -41,7 +41,7 @@ export default function RootLayout() {
     
     if (!token && !inAuthGroup) {
       // Redirect to login
-      router.replace('/(tabs)/index');
+      router.replace('/');
     } else if (token && inAuthGroup) {
       // Redirect to main app
       router.replace('/(tabs)/ordermenu');

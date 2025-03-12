@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, FlatList, Switch, RefreshControl, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, FlatList, Switch, RefreshControl, ScrollView, GestureResponderEvent } from 'react-native';
 import { useState, useEffect } from 'react';
 import { Collapsible } from '@/components/Collapsible';
 import { ExternalLink } from '@/components/ExternalLink';
@@ -13,6 +13,7 @@ import CallFor from "@/utilities/CallFor";
 // import { RoleId, Uid } from "../hooks/remixData";
 import StatusMapper from "@/utilities/StatusMapper";
 import { useAuth } from '@/utilities/AuthContext';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 export default function OrdersScreen() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -32,6 +33,7 @@ export default function OrdersScreen() {
     2: 31,
     3: 32
   };
+  const [touchStart, setTouchStart] = useState(0);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -232,6 +234,28 @@ export default function OrdersScreen() {
     </ThemedView>
   );
 
+  const handleTouchStart = (event: GestureResponderEvent) => {
+    setTouchStart(event.nativeEvent.pageX);
+  };
+
+  const handleTouchEnd = (event: GestureResponderEvent) => {
+    const touchEnd = event.nativeEvent.pageX;
+    const minSwipeDistance = 20; // minimum distance for swipe
+
+    // Calculate swipe distance
+    const swipeDistance = touchStart - touchEnd;
+
+    if (Math.abs(swipeDistance) > minSwipeDistance) {
+      if (swipeDistance > 0 && selectedTab < tabs.length - 1) {
+        // Swiped Left - Next Tab
+        setSelectedTab(selectedTab + 1);
+      } else if (swipeDistance < 0 && selectedTab > 0) {
+        // Swiped Right - Previous Tab
+        setSelectedTab(selectedTab - 1);
+      }
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <CommonHeader title="Today Orders" />
@@ -246,6 +270,7 @@ export default function OrdersScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.tabsContainer}
+        contentContainerStyle={styles.tabsContentContainer}
       >
         <View style={styles.tabs}>
           {tabs.map((tab, index) => (
@@ -262,28 +287,35 @@ export default function OrdersScreen() {
         </View>
       </ScrollView>
 
-      <FlatList
-        data={orders}
-        renderItem={renderOrderItem}
-        keyExtractor={(item, index) => index.toString()}
-        onEndReached={() => {
-          if (!loading && hasMore) {
-            const nextPage = page + 1;
-            setPage(nextPage);
-            fetchOrders(nextPage);
+      <View 
+        style={styles.ordersContainer}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <FlatList
+          data={orders}
+          renderItem={renderOrderItem}
+          keyExtractor={(item, index) => index.toString()}
+          onEndReached={() => {
+            if (!loading && hasMore) {
+              const nextPage = page + 1;
+              setPage(nextPage);
+              fetchOrders(nextPage);
+            }
+          }}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setPage(1);
+                fetchOrders(1);
+              }}
+            />
           }
-        }}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setPage(1);
-              fetchOrders(1);
-            }}
-          />
-        }
-      />
+        />
+      </View>
+      {loading && <LoadingSpinner />}
     </ThemedView>
   );
 }
@@ -324,9 +356,12 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     marginVertical: 8,
   },
+  tabsContentContainer: {
+    paddingLeft: 16,
+  },
   tabs: {
     flexDirection: 'row',
-    paddingHorizontal: 8,
+    paddingRight: 8,
   },
   tabButton: {
     marginRight: 32,
@@ -400,5 +435,9 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  ordersContainer: {
+    flex: 1,
+    width: '100%',
   },
 });

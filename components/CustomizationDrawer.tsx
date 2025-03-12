@@ -270,6 +270,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    
   },
   price: {
     fontSize: 14,
@@ -283,8 +284,10 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   radioButtonSelected: {
+    // borderWidth:2,
     borderColor: '#4CAF50',
     backgroundColor: '#4CAF50',
+
   },
   footer: {
     padding: 16,

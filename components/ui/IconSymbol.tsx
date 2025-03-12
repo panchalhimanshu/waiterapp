@@ -9,6 +9,11 @@ import { OpaqueColorValue, StyleProp, ViewStyle } from 'react-native';
 const MAPPING = {
   // See MaterialIcons here: https://icons.expo.fyi
   // See SF Symbols in the SF Symbols app on Mac.
+   'dashboard':'dashboard',
+   'camera':'camera',
+   'edit':'edit',
+   'close':'close',
+  'menu':'menu',
   'arrow-back': 'arrow-back',
   'search': 'search',
   'storefront.circle.fill.fill': 'store',
@@ -21,7 +26,7 @@ const MAPPING = {
   'envelope.open.fill': 'email',
   'envelope.open': 'email',
   'cart.fill': 'shopping-cart',
-  'cart': 'shopping-bag',
+  'cart': 'shopping-cart',
   'cart.circle.fill': 'shopping-cart',
   'cart.circle': 'shopping-cart',
   'cart.badge.plus': 'add-shopping-cart',
@@ -46,6 +51,7 @@ const MAPPING = {
   'ordered': 'list',
   'phone': 'phone',
   'person': 'person',
+ 
 } as Partial<
   Record<
     import('expo-symbols').SymbolViewProps['name'],

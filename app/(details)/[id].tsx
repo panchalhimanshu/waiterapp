@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, View, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
+import { StyleSheet, View, ScrollView, TextInput, TouchableOpacity, RefreshControl, Modal, Alert, Linking } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -9,12 +9,16 @@ import CallFor from '@/utilities/CallFor';
 import StatusMapper from "@/utilities/StatusMapper";
 import { Switch } from 'react-native';
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import WebView from 'react-native-webview';
 
 export default function OrderDetails() {
   const { id } = useLocalSearchParams();
   const [orderData, setOrderData] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
+  const [isBillModalVisible, setBillModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [razorpayHTML, setRazorpayHTML] = useState('');
 
   const fetchOrderDetails = async () => {
     try {
@@ -73,6 +77,292 @@ export default function OrderDetails() {
       console.error('Error updating item status:', error);
     }
   };
+
+  const handleRazorpayPayment = async () => {
+    try {
+      const razorpayHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+        </head>
+        <body>
+          <script>
+            var options = {
+              key: 'rzp_test_vv1FCZvuDRF6lQ',
+              amount: ${Math.round(orderData?.ordertotal * 100)},
+              currency: 'INR',
+              name: 'Taj Hotel',
+              description: 'Order #${orderData?.orderid}',
+              prefill: {
+                name: '${orderData?.customer_name || ''}',
+                email: '',
+                contact: ''
+              },
+              theme: {
+                color: '#000000'
+              },
+              handler: function(response) {
+                window.ReactNativeWebView.postMessage(JSON.stringify(response));
+              },
+              modal: {
+                ondismiss: function() {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MODAL_CLOSED' }));
+                }
+              },
+              notes: {
+                order_id: '${orderData?.orderid}'
+              }
+            };
+            
+            try {
+              var rzp = new Razorpay(options);
+              rzp.on('payment.failed', function(response) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'PAYMENT_FAILED',
+                  error: response.error
+                }));
+              });
+              rzp.open();
+            } catch (error) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'ERROR',
+                error: error.message
+              }));
+            }
+          </script>
+        </body>
+        </html>
+      `;
+
+      setPaymentModalVisible(true);
+      setRazorpayHTML(razorpayHTML);
+    } catch (error) {
+      console.error('Payment initialization error:', error);
+      Alert.alert('Error', 'Failed to initialize payment. Please try again.');
+    }
+  };
+
+  const handlePaymentResponse = async (event: any) => {
+    try {
+      const response = JSON.parse(event.nativeEvent.data);
+      console.log('Payment Response:', response); // Add logging to debug
+
+      if (response.razorpay_payment_id) {
+        // Call your payment success handler
+        const paymentUpdateResponse = await CallFor(
+          `orders/${id}/status`,
+          'put',
+          {
+            orderStatus: 31, // Completed status
+            paymentStatus: 1, // Paid status
+            paymentId: response.razorpay_payment_id,
+            paymentMethod: 'card',
+            paymentCompletedTime: new Date().toISOString()
+          },
+          'Auth'
+        );
+
+        if (paymentUpdateResponse.data.success) {
+          Alert.alert('Success', 'Payment successful!');
+          setBillModalVisible(false);
+          // Optionally refresh order details
+          fetchOrderDetails();
+        } else {
+          throw new Error('Failed to update order status');
+        }
+      } else {
+        throw new Error('No payment ID received');
+      }
+    } catch (error) {
+      console.error('Payment processing error:', error);
+      Alert.alert(
+        'Error',
+        'Payment was processed but failed to update order. Please contact support.'
+      );
+    } finally {
+      setPaymentModalVisible(false);
+    }
+  };
+
+  const BillModal = () => (
+    <>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isBillModalVisible}
+        onRequestClose={() => setBillModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.billHeader}>
+              <ThemedText style={styles.restaurantName}>RESTAURANT</ThemedText>
+              <ThemedText style={styles.hotelName}>Taj Hotel</ThemedText>
+              <ThemedText style={styles.address}>Ahmedabad</ThemedText>
+              <ThemedText style={styles.address}>Sindhu Bhavan-380009</ThemedText>
+              <ThemedText style={styles.gstin}>GSTIN: 23AABFM0301H1ZH</ThemedText>
+              <ThemedText style={styles.state}>State: Gujarat</ThemedText>
+            </View>
+
+            <View style={styles.billInfo}>
+              <View style={styles.billInfoRow}>
+                <ThemedText>Bill No: #{orderData?.orderid}</ThemedText>
+                <ThemedText>Date: {new Date().toLocaleDateString()}</ThemedText>
+              </View>
+              <View style={styles.billInfoRow}>
+                <ThemedText>Time: {new Date().toLocaleTimeString()}</ThemedText>
+                <ThemedText>Table: {orderData?.table_name}</ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.billTable}>
+              <View style={styles.tableHeader}>
+                <ThemedText style={[styles.tableCell, { flex: 2 }]}>Description</ThemedText>
+                <ThemedText style={[styles.tableCell, { flex: 1 }]}>Qty</ThemedText>
+                <ThemedText style={[styles.tableCell, { flex: 1 }]}>Rate</ThemedText>
+                <ThemedText style={[styles.tableCell, { flex: 1 }]}>Tax %</ThemedText>
+                <ThemedText style={[styles.tableCell, { flex: 1 }]}>Tax Amt</ThemedText>
+                <ThemedText style={[styles.tableCell, { flex: 1 }]}>Amount</ThemedText>
+              </View>
+
+              {orderData?.orderitems.map((item, index) => (
+                <View key={index} style={styles.tableRow}>
+                  <ThemedText style={[styles.tableCell, { flex: 2 }]}>
+                    {item.itemname}
+                    <ThemedText style={styles.variantText}>
+                      {'\n'}({item.variantname})
+                    </ThemedText>
+                  </ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>{item.itemqty}</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>₹{item.itemrate}</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>{item.itemtaxrate}%</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>₹{item.itemtaxamount}</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>₹{item.itemgrossamt}</ThemedText>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.billSummary}>
+              <View style={styles.summaryRow}>
+                <ThemedText>Subtotal</ThemedText>
+                <ThemedText>₹{parseFloat(orderData?.orderitemtotal).toFixed(2)}</ThemedText>
+              </View>
+              {orderData?.ordertaxdetails.map((tax, index) => (
+                <View key={index} style={styles.summaryRow}>
+                  <ThemedText>Tax ({orderData?.orderitems[0]?.itemtaxrate}%)</ThemedText>
+                  <ThemedText>₹{parseFloat(tax.ordertaxamount).toFixed(2)}</ThemedText>
+                </View>
+              ))}
+              <View style={[styles.summaryRow, styles.totalRow]}>
+                <ThemedText style={styles.totalText}>Total Amount</ThemedText>
+                <ThemedText style={styles.totalText}>
+                  ₹{parseFloat(orderData?.ordertotal).toFixed(2)}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.paymentOptions}>
+              <TouchableOpacity 
+                style={styles.paymentButton}
+                onPress={handleRazorpayPayment}
+              >
+                <ThemedText style={styles.paymentButtonText}>Pay with Card</ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.paymentButton, styles.cashButton]}
+                onPress={() => handlePaymentSuccess('cash_payment')}
+              >
+                <ThemedText style={styles.paymentButtonText}>Pay with Cash</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={[styles.button, styles.goBackButton]} 
+                onPress={() => setBillModalVisible(false)}
+              >
+                <IconSymbol name="arrow-back" size={20} color="#000" />
+                <ThemedText style={styles.buttonText}>Go Back</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.printButton]}
+                onPress={() => {
+                  // Handle print functionality
+                  setBillModalVisible(false);
+                }}
+              >
+                <ThemedText style={[styles.buttonText, { color: '#fff' }]}>Print Bill</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <PaymentModal />
+    </>
+  );
+
+  const PaymentModal = () => (
+    <Modal
+      visible={paymentModalVisible}
+      onRequestClose={() => {
+        Alert.alert(
+          'Cancel Payment',
+          'Are you sure you want to cancel the payment?',
+          [
+            {
+              text: 'No',
+              style: 'cancel',
+            },
+            {
+              text: 'Yes',
+              onPress: () => setPaymentModalVisible(false),
+            },
+          ]
+        );
+      }}
+      animationType="slide"
+      transparent={true}
+    >
+      <View style={styles.modalContainer}>
+        <WebView
+          source={{ html: razorpayHTML }}
+          onMessage={handlePaymentResponse}
+          style={styles.webview}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.warn('WebView error:', nativeEvent);
+            Alert.alert('Error', 'Failed to load payment interface');
+            setPaymentModalVisible(false);
+          }}
+        />
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => {
+            Alert.alert(
+              'Cancel Payment',
+              'Are you sure you want to cancel the payment?',
+              [
+                {
+                  text: 'No',
+                  style: 'cancel',
+                },
+                {
+                  text: 'Yes',
+                  onPress: () => setPaymentModalVisible(false),
+                },
+              ]
+            );
+          }}
+        >
+          <ThemedText style={styles.closeButtonText}>Cancel Payment</ThemedText>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
 
   return (
     <ThemedView style={styles.container}>
@@ -150,10 +440,10 @@ export default function OrderDetails() {
               {/* Items List */}
               <View style={styles.tableContainer}>
                 <View style={styles.tableHeader}>
-                  <ThemedText style={[styles.tableCell, styles.headerCell]}>Items</ThemedText>
-                  <ThemedText style={[styles.tableCell, styles.headerCell]}>Status</ThemedText>
-                  <ThemedText style={[styles.tableCell, styles.headerCell]}>Qty</ThemedText>
-                  <ThemedText style={[styles.tableCell, styles.headerCell]}>Amount</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 2 }]}>Items</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>Qty</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1 }]}>Amount</ThemedText>
+                  <ThemedText style={[styles.tableCell, { flex: 1.5 }]}>Status</ThemedText>
                 </View>
 
                 {orderData.orderitems.map((item, index) => (
@@ -162,23 +452,26 @@ export default function OrderDetails() {
                       <ThemedText>{item.itemname}</ThemedText>
                       <ThemedText style={styles.variantText}>({item.variantname})</ThemedText>
                     </View>
-                    <View style={[styles.tableCell, { flex: 2 }]}>
-                      <View style={styles.statusContainer}>
-                        <StatusMapper.StatusBadge statusCode={item.orderitem_status} />
-                        {(item.orderitem_status == "26" || item.orderitem_status == "49") && 
-                         orderData?.orderstatus != "31" && (
-                          <Switch
-                            value={item.orderitem_status === "49"}
-                            onValueChange={() => handleMarkAsServed(item.oitemsid, item.orderitem_status)}
-                            ios_backgroundColor="#F1C556"
-                            trackColor={{ false: "#F1C556", true: "#20C06A" }}
-                            thumbColor={"#FFFFFF"}
-                          />
-                        )}
-                      </View>
-                    </View>
                     <ThemedText style={[styles.tableCell, { flex: 1 }]}>x{item.itemqty}</ThemedText>
                     <ThemedText style={[styles.tableCell, { flex: 1 }]}>₹{item.itemgrossamt}</ThemedText>
+                    <View style={[styles.tableCell, { flex: 1.5 }]}>
+                      <View style={styles.statusActionContainer}>
+                        <View style={styles.statusWrapper}>
+                          <StatusMapper.StatusBadge statusCode={item.orderitem_status} />
+                          {(item.orderitem_status == "26" || item.orderitem_status == "49") && 
+                           orderData?.orderstatus != "31" && (
+                            <Switch
+                              value={item.orderitem_status === "49"}
+                              onValueChange={() => handleMarkAsServed(item.oitemsid, item.orderitem_status)}
+                              ios_backgroundColor="#F1C556"
+                              trackColor={{ false: "#F1C556", true: "#20C06A" }}
+                              thumbColor={"#FFFFFF"}
+                              style={styles.statusSwitch}
+                            />
+                          )}
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -186,16 +479,16 @@ export default function OrderDetails() {
               {/* Total Section */}
               <View style={styles.totalSection}>
                 <View style={styles.totalRow}>
-                  <ThemedText>Subtotal</ThemedText>
-                  <ThemedText>₹{parseFloat(orderData.orderitemtotal).toFixed(2)}</ThemedText>
+                  <ThemedText style={styles.totalLabel}>Subtotal</ThemedText>
+                  <ThemedText style={styles.totalValue}>₹{parseFloat(orderData.orderitemtotal).toFixed(2)}</ThemedText>
                 </View>
                 <View style={styles.totalRow}>
-                  <ThemedText>Tax</ThemedText>
-                  <ThemedText>₹{parseFloat(orderData.ordertaxtotal).toFixed(2)}</ThemedText>
+                  <ThemedText style={styles.totalLabel}>Tax</ThemedText>
+                  <ThemedText style={styles.totalValue}>₹{parseFloat(orderData.ordertaxtotal).toFixed(2)}</ThemedText>
                 </View>
                 <View style={[styles.totalRow, styles.finalTotal]}>
-                  <ThemedText style={styles.boldText}>Total</ThemedText>
-                  <ThemedText style={styles.boldText}>
+                  <ThemedText style={styles.grandTotalLabel}>Grand Total</ThemedText>
+                  <ThemedText style={styles.grandTotalValue}>
                     ₹{parseFloat(orderData.ordertotal).toFixed(2)}
                   </ThemedText>
                 </View>
@@ -211,11 +504,7 @@ export default function OrderDetails() {
                 orderData?.orderstatus != "31" && (
                   <TouchableOpacity 
                     style={styles.generateBillButton}
-                  //   onPress={() => router.push({
-                  //     pathname: RoleId == 2 
-                  //       ? `/outletmanager/orderhistory/orderdbill/${orderid}`
-                  //       : `/waiter/myorder/orderdbill/${orderid}`
-                  //   })}
+                    onPress={() => setBillModalVisible(true)}
                   >
                     <ThemedText style={styles.generateBillText}>Generate Bill</ThemedText>
                   </TouchableOpacity>
@@ -224,6 +513,8 @@ export default function OrderDetails() {
           )
         )}
       </ScrollView>
+
+      <BillModal />
     </ThemedView>
   );
 }
@@ -292,8 +583,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   tableCell: {
-    flex: 1,
-    padding: 4,
+    fontSize: 14,
+    paddingHorizontal: 4,
   },
   variantText: {
     fontSize: 12,
@@ -306,23 +597,43 @@ const styles = StyleSheet.create({
   },
   totalSection: {
     padding: 16,
-    gap: 8,
+    gap: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 10,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  totalLabel: {
+    fontSize: 15,
+    color: '#666',
+  },
+  totalValue: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   finalTotal: {
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 8,
+    borderTopColor: '#ddd',
+    paddingTop: 12,
     marginTop: 8,
   },
-  boldText: {
+  grandTotalLabel: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: '#000',
+  },
+  grandTotalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
   },
   generateBillButton: {
-    backgroundColor: '#000',
+    backgroundColor: 'green',
     padding: 16,
     borderRadius: 24,
     margin: 16,
@@ -342,5 +653,149 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     color: '#ff0000',
+  },
+  statusActionContainer: {
+    alignItems: 'flex-start',
+  },
+  statusWrapper: {
+    alignItems: 'center',
+    gap: 4, // Space between status badge and switch
+  },
+  statusSwitch: {
+    transform: [{ scale: 0.8 }], // Makes the switch slightly smaller
+    marginTop: 2, // Additional space between status and switch
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    width: '100%',
+  },
+  billHeader: {
+    marginBottom: 20,
+  },
+  restaurantName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  hotelName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  address: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  gstin: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  state: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  billInfo: {
+    marginBottom: 20,
+  },
+  billInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  billTable: {
+    marginBottom: 20,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 8,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingVertical: 8,
+  },
+  billSummary: {
+    marginBottom: 20,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  totalText: {
+    fontWeight: 'bold',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 0,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12 ,
+    paddingHorizontal:25,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+  },
+  goBackButton: {
+    backgroundColor: 'white',
+  },
+  printButton: {
+    backgroundColor: 'green',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  webview: {
+    flex: 1,
+  },
+  closeButton: {
+    padding: 16,
+    backgroundColor: '#000',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  paymentOptions: {
+    marginTop: 20,
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  paymentButton: {
+    backgroundColor: '#2E7D32',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cashButton: {
+    backgroundColor: '#1976D2',
+  },
+  paymentButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 

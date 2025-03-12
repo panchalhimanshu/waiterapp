@@ -31,29 +31,28 @@ export const CommonHeader = ({
     router.back();
   };
 
+  const handleProfilePress = () => {
+    router.push('/profile');
+  };
+
   return (
     <View style={[styles.header, { backgroundColor }]}>
       <View style={styles.headerContent}>
         <View style={styles.leftSection}>
-          {showBackButton && (
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={handleBackPress}
-            >
-              <IconSymbol name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
-          )}
-          {title && <Text style={styles.headerTitle}>{title}</Text>}
+          <TouchableOpacity 
+            style={styles.profileButton}
+            onPress={handleProfilePress}
+          >
+            <IconSymbol name="person" size={24} color="#fff" />
+          </TouchableOpacity>
+          
         </View>
+        <View style={styles.titleContainer}>
+            {title && <Text style={styles.headerTitle}>{title}</Text>}
+          </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
-            style={styles.headerButton}
-            onPress={handleNotificationPress}
-          >
-            <IconSymbol name="notifications" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerButton}
+            style={[styles.headerButton, styles.cartButton]}
             onPress={handleCartPress}
           >
             <View>
@@ -83,7 +82,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   leftSection: {
     flexDirection: 'row',
@@ -95,16 +94,20 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: 'semibold',
     color: '#fff',
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 10,
     alignItems: 'center',
+    paddingRight: 16,
   },
   headerButton: {
     padding: 8,
+  },
+  cartButton: {
+    marginLeft: 0,
   },
   badge: {
     position: 'absolute',
@@ -121,5 +124,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  profileButton: {
+    padding: 8,
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
 }); 

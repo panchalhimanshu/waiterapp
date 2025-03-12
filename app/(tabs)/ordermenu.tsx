@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, Image, FlatList, TouchableOpacity, StyleSheet, Modal, useWindowDimensions, ScrollView } from "react-native";
+import { View, Text, Image, FlatList, TouchableOpacity, StyleSheet, Modal, useWindowDimensions, ScrollView, GestureResponderEvent } from "react-native";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import CallFor from "../../utilities/CallFor";
 import { CustomizationDrawer } from '@/components/CustomizationDrawer';
 import { CommonHeader } from '@/components/CommonHeader';
 import { router } from "expo-router";
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 const categories = [
   { name: "Best Seller", id: 0 },
@@ -20,6 +21,9 @@ const MenuScreen = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isGridView, setIsGridView] = useState(true);
+  const [touchStart, setTouchStart] = useState(0);
 
       // Get the route params
       const params = router.params as { bookingId?: string; tableId?: string; uid?: string };
@@ -37,6 +41,7 @@ const MenuScreen = () => {
   }, [selectedCategory]);
 
   const fetchMenuItems = async () => {
+    setLoading(true);
     try {
       const response = await CallFor(
         "products/filter",
@@ -70,6 +75,8 @@ const MenuScreen = () => {
       }
     } catch (error) {
       console.error("Error fetching menu items:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -83,6 +90,81 @@ const MenuScreen = () => {
     setIsModalVisible(false);
     setSelectedItem(null);
   };
+
+  const handleTouchStart = (event: GestureResponderEvent) => {
+    setTouchStart(event.nativeEvent.pageX);
+  };
+
+  const handleTouchEnd = (event: GestureResponderEvent) => {
+    const touchEnd = event.nativeEvent.pageX;
+    const minSwipeDistance = 20; // minimum distance for swipe
+
+    // Calculate swipe distance
+    const swipeDistance = touchStart - touchEnd;
+
+    // Find current category index
+    const currentIndex = categories.findIndex(cat => cat.id == selectedCategory.id);
+
+    if (Math.abs(swipeDistance) > minSwipeDistance) {
+      if (swipeDistance > 0 && currentIndex < categories.length - 1) {
+        // Swiped Left - Next Category
+        setSelectedCategory(categories[currentIndex + 1]);
+      } else if (swipeDistance < 0 && currentIndex > 0) {
+        // Swiped Right - Previous Category
+        setSelectedCategory(categories[currentIndex - 1]);
+      }
+    }
+  };
+
+  const renderGridItem = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={[styles.gridCard, { width: width / getNumColumns() - 16 }]}
+      onPress={() => handleItemPress(item)}
+    >
+      <Image 
+        source={{ uri: `http://172.16.1.57:5004${item.image}` }}
+        style={styles.gridImage}
+      />
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={() => handleItemPress(item)}
+      >
+        <Text style={styles.addText}>+ Add</Text>
+      </TouchableOpacity>
+      <View style={styles.itemDetails}>
+        <Text style={styles.itemName}>{item.name}</Text>
+        <View style={styles.ratingPriceContainer}>
+          <Text style={styles.rating}>⭐ {item.rating}</Text>
+          <Text style={styles.price}>₹{item.price}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderListItem = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.listCard}
+      onPress={() => handleItemPress(item)}
+    >
+      <Image 
+        source={{ uri: `http://172.16.1.57:5004${item.image}` }}
+        style={styles.listImage}
+      />
+      <View style={styles.listContent}>
+        <Text style={styles.itemName}>{item.name}</Text>
+        <View style={styles.listDetails}>
+          <Text style={styles.rating}>⭐ {item.rating}</Text>
+          <Text style={styles.price}>₹{item.price}</Text>
+          <TouchableOpacity 
+            style={styles.listAddButton}
+            onPress={() => handleItemPress(item)}
+          >
+            <Text style={styles.addText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
@@ -101,7 +183,7 @@ const MenuScreen = () => {
               onPress={() => setSelectedCategory(category)}
               style={styles.tabButton}
             >
-              <Text style={selectedCategory.id === category.id ? styles.activeTab : styles.inactiveTab}>
+              <Text style={selectedCategory.id == category.id ? styles.activeTab : styles.inactiveTab}>
                 {category.name}
               </Text>
             </TouchableOpacity>
@@ -109,37 +191,32 @@ const MenuScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Menu Items */}
-      <FlatList
-        data={menuItems}
-        keyExtractor={(item :any) => item.id.toString()}
-        numColumns={getNumColumns()}
-        key={getNumColumns()}  // Force re-render when columns change
-        renderItem={({ item }: { item: any }) => (
-          <TouchableOpacity 
-            style={[styles.card, { width: width / getNumColumns() - 16 }]}
-            onPress={() => handleItemPress(item)}
-          >
-            <Image 
-              source={{ uri: `http://172.16.1.57:5004${item.image}` }}
-              style={styles.image}
-            />
-              <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => handleItemPress(item )}
-            >
-              <Text style={styles.addText}>+ Add</Text>
-            </TouchableOpacity>
-            <View style={styles.itemDetails}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <View style={styles.ratingPriceContainer}>
-                <Text style={styles.rating}>⭐ {item.rating}</Text>
-                <Text style={styles.price}>₹{item.price}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Toggle View Button - Updated icons */}
+      <TouchableOpacity 
+        style={styles.toggleButton}
+        onPress={() => setIsGridView(!isGridView)}
+      >
+        <IconSymbol 
+          name={isGridView ? "menu" : "dashboard"} 
+          size={24} 
+          color="#fff"
+        />
+      </TouchableOpacity>
+
+      {/* Menu Items with Swipe Handlers */}
+      <View 
+        style={styles.menuItemsContainer}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <FlatList
+          data={menuItems}
+          keyExtractor={(item) => item.id.toString()}
+          numColumns={isGridView ? getNumColumns() : 1}
+          key={isGridView ? 'grid' : 'list'}
+          renderItem={isGridView ? renderGridItem : renderListItem}
+        />
+      </View>
 
       {/* Customization Drawer */}
       {selectedItem && (
@@ -149,6 +226,8 @@ const MenuScreen = () => {
           onClose={handleCloseDrawer}
         />
       )}
+
+      {loading && <LoadingSpinner />}
     </View>
   );
 };
@@ -227,6 +306,78 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 4
+  },
+  toggleButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 30,
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 30,
+    elevation: 5,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  listCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    margin: 8,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    padding: 8,
+  },
+  listImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  listContent: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'space-between',
+  },
+  listDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  listAddButton: {
+    backgroundColor: '#222',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 5,
+  },
+  gridCard: {
+    margin: 8,
+    padding: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  gridImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  menuItemsContainer: {
+    flex: 1,
+    width: '100%',
   },
 });
 

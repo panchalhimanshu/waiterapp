@@ -15,7 +15,7 @@ const GlobalPropperties = {
   // testParam: 'https://sms-api.ezeo.app/api/',
   // viewdocument: 'http://192.168.1.87:5000',
   // viewdocument: 'http://192.168.1.153:5009',
-  viewdocument: "http://192.168.1.131:5007",
+  viewdocument: "http://172.16.1.57",
   // viewdocument: 'http://localhost:5000',
   // ezeo_shopmystation:"https://staging.shopmystation.com/",
   ezeo_sms_live: "",

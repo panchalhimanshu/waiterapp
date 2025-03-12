@@ -19,6 +19,10 @@ export default function CartScreen() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [mobileNumberError, setMobileNumberError] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Add useEffect to fetch stored values when component mounts
   useEffect(() => {
@@ -170,9 +174,48 @@ export default function CartScreen() {
     }
   };
 
+  const handleCustomerSearch = async (searchTerm) => {
+    if (searchTerm.length >= 4) {
+      try {
+        const response = await CallFor(
+          `users/search-customer/${searchTerm}`,
+          "GET",
+          null,
+          "Auth"
+        );
+        if (response.data.success) {
+          setSearchResults(response.data.data);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      }
+    } else {
+      setSearchResults([]);
+    }
+  };
+
   const handleSaveCustomerDetails = async () => {
-    if (!customerName || !mobileNumber) {
-      Alert.alert('Error', 'Please fill in all fields');
+    setNameError("");
+    setMobileNumberError("");
+
+    // Validate mobile number
+    const mobileRegex = /^\d{10}$/;
+    if (!mobileRegex.test(mobileNumber)) {
+      setMobileNumberError("Mobile number must be exactly 10 digits.");
+      return;
+    }
+
+    // If a customer was selected from search results, use their ID
+    if (selectedCustomer) {
+      setResponseData(prev => ({
+        ...prev,
+        uid: selectedCustomer.uid
+      }));
+      await AsyncStorage.setItem('responseData', JSON.stringify({
+        ...responseData,
+        uid: selectedCustomer.uid
+      }));
+      setShowCustomerModal(false);
       return;
     }
 
@@ -192,20 +235,22 @@ export default function CartScreen() {
           ...prev,
           uid: customerResponse.data.data.uid
         }));
-        
-        // Store the updated responseData
         await AsyncStorage.setItem('responseData', JSON.stringify({
           ...responseData,
           uid: customerResponse.data.data.uid
         }));
-        
         setShowCustomerModal(false);
-      } else {
-        Alert.alert('Error', 'Failed to save customer details');
       }
     } catch (error) {
       console.error('Error saving customer details:', error);
-      Alert.alert('Error', 'Failed to save customer details');
+      // Check for specific error type indicating duplicate mobile number
+      if (error.response?.data?.data?.error?.code == "UNIQUE_VIOLATION" || 
+          error.response?.data?.data?.error?.details?.code == "P2002") {
+        setMobileNumberError("This mobile number is already registered");
+        Alert.alert('Error', 'This mobile number is already registered');
+      } else {
+        Alert.alert('Error', 'Failed to save customer details. Please try again.');
+      }
     }
   };
 
@@ -337,21 +382,46 @@ export default function CartScreen() {
 
             <View style={styles.inputContainer}>
               <Text>Phone Number</Text>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, mobileNumberError && styles.inputError]}>
                 <IconSymbol name="phone" size={20} color="#666" />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter Phone Number"
                   value={mobileNumber}
-                  onChangeText={setMobileNumber}
+                  onChangeText={(text) => {
+                    setMobileNumber(text);  
+                    handleCustomerSearch(text);
+                  }}
                   keyboardType="phone-pad"
                 />
               </View>
+              {mobileNumberError ? <Text style={styles.errorText}>{mobileNumberError}</Text> : null}
             </View>
+
+            {searchResults.length > 0 && (
+              <View style={styles.searchResults}>
+                <ScrollView style={styles.searchResultsScroll}>
+                  {searchResults.map((customer) => (
+                    <TouchableOpacity
+                      key={customer.uid}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        setSelectedCustomer(customer);
+                        setCustomerName(customer.fullname);
+                        setMobileNumber(customer.mobno);
+                        setSearchResults([]);
+                      }}
+                    >
+                      <Text>{customer.fullname} - {customer.mobno}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             <View style={styles.inputContainer}>
               <Text>Customer Name</Text>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, nameError && styles.inputError]}>
                 <IconSymbol name="person" size={20} color="#666" />
                 <TextInput
                   style={styles.input}
@@ -360,6 +430,7 @@ export default function CartScreen() {
                   onChangeText={setCustomerName}
                 />
               </View>
+              {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
             </View>
 
             <View style={styles.buttonContainer}>
@@ -484,9 +555,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   summary: {
+    borderRadius:10,
     padding: 16,
     backgroundColor: '#f9f9f9',
-    marginTop: 16,
+    margin: 16,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -612,5 +684,28 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  inputError: {
+    borderColor: 'red',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  searchResults: {
+    maxHeight: 150,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+  },
+  searchResultsScroll: {
+    flex: 1,
+  },
+  searchResultItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
 }); 

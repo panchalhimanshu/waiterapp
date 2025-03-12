@@ -5,7 +5,8 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Callfor from "@/utilities/CallFor";
 import { useAuth } from '@/utilities/AuthContext';
-
+import waiterimg from './../../assets/images/waiter.png'
+import CallFor from "@/utilities/CallFor";
 const LoginScreen = () => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -13,20 +14,15 @@ const LoginScreen = () => {
 
   const handleSubmit = async () => {
     try {
-      const response = await fetch('http://172.16.1.57:5001/api/v2/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: id,
-          password,
-        }),
-      });
-      
-      const data = await response.json();
+    
+      const response = await CallFor("auth/login", "post",JSON.stringify({
+        email: id,
+        password,
+      }),"withoutAuth")
 
-      if (response.ok) {
+      const data = await response.data;
+
+      if (data) {
         // AuthContext में डेटा सेट करें
         setAuthData({
           token: data.data.token,
@@ -45,39 +41,46 @@ const LoginScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Image 
-        source={require("C:/reactnative/myApp/assets/images/waiter.png")} 
-        style={[styles.logo, { tintColor: 'green' }]} 
-      />
-      <Text style={styles.welcomeText}>Welcome to the</Text>
-      <Text style={styles.appName}>WAITER APP</Text>
-      
-      <View style={styles.inputContainer}>
-        <IconSymbol name="envelope" size={20} color="#666" style={styles.icon} />
-        <TextInput 
-          style={styles.input} 
-          placeholder="Id" 
-          placeholderTextColor="#aaa"
-          value={id}
-          onChangeText={setId}
-        />
+      <View style={styles.contentContainer}>
+        <View style={styles.headerContainer}>
+          <Image 
+            source={waiterimg} 
+            style={[styles.logo, { tintColor: 'green' }]} 
+          />
+        </View>
+        
+        <View style={styles.textContainer}>
+          <Text style={styles.welcomeText}>Welcome to the</Text>
+          <Text style={styles.appName}>WAITER APP</Text>
+        </View>
+        
+        <View style={styles.inputContainer}>
+          <IconSymbol name="envelope" size={20} color="#666" style={styles.icon} />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Id" 
+            placeholderTextColor="#aaa"
+            value={id}
+            onChangeText={setId}
+          />
+        </View>
+        
+        <View style={styles.inputContainer}>
+          <IconSymbol name="lock" size={20} color="#666" style={styles.icon} />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Password" 
+            placeholderTextColor="#aaa" 
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+        </View>
+        
+        <TouchableOpacity style={styles.loginButton} onPress={handleSubmit}>
+          <Text style={styles.loginText}>Log In</Text>
+        </TouchableOpacity>
       </View>
-      
-      <View style={styles.inputContainer}>
-        <IconSymbol name="lock" size={20} color="#666" style={styles.icon} />
-        <TextInput 
-          style={styles.input} 
-          placeholder="Password" 
-          placeholderTextColor="#aaa" 
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-      </View>
-      
-      <TouchableOpacity style={styles.loginButton} onPress={handleSubmit}>
-        <Text style={styles.loginText}>Log In</Text>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -85,14 +88,24 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "#fff",
+    justifyContent: 'center',
+  },
+  contentContainer: {
+    width: '80%',
+    alignSelf: 'center',
+  },
+  headerContainer: {
+    alignSelf: 'flex-start',
+    marginBottom: 15,
   },
   logo: {
     width: 90,
     height: 90,
-    marginBottom: 20,
+  },
+  textContainer: {
+    alignSelf: 'flex-start',
+    marginBottom: 40,
   },
   welcomeText: {
     fontSize: 18,
@@ -102,12 +115,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "bold",
     color: "#000",
-    marginBottom: 20,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    width: "80%",
     backgroundColor: "#f8f8f8",
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -133,6 +144,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+    textAlign: 'center',
   },
 });
 
