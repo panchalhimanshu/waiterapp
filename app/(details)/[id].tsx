@@ -10,6 +10,8 @@ import StatusMapper from "@/utilities/StatusMapper";
 import { Switch } from 'react-native';
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import WebView from 'react-native-webview';
+import { useCart } from '@/context/CartContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function OrderDetails() {
   const { id } = useLocalSearchParams();
@@ -19,6 +21,7 @@ export default function OrderDetails() {
   const [isBillModalVisible, setBillModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [razorpayHTML, setRazorpayHTML] = useState('');
+  const { clearCart, addToCart } = useCart();
 
   const fetchOrderDetails = async () => {
     try {
@@ -49,7 +52,7 @@ export default function OrderDetails() {
       setOrderData(prevData => ({
         ...prevData,
         orderitems: prevData.orderitems.map((item : any) => 
-          item.oitemsid === oitemsid 
+          item.oitemsid == oitemsid 
             ? { ...item, orderitem_status: newStatus.toString() }
             : item
         )
@@ -67,7 +70,7 @@ export default function OrderDetails() {
         setOrderData(prevData  => ({
           ...prevData,
           orderitems: prevData.orderitems.map((item : any) => 
-            item.oitemsid === oitemsid 
+            item.oitemsid == oitemsid 
               ? { ...item, orderitem_status: currentStatus.toString() }
               : item
           )
@@ -183,6 +186,47 @@ export default function OrderDetails() {
       );
     } finally {
       setPaymentModalVisible(false);
+    }
+  };
+
+  const handleEditOrder = async () => {
+    try {
+      // Clear existing cart
+      clearCart();
+
+      // Add existing order items to cart
+      orderData.orderitems.forEach(item => {
+        // Only add items with status 28 (pending) as editable quantities
+        const cartItem = {
+          id: item.pvid,
+          productId: item.proid,
+          name: item.itemname,
+          image: item.product_image?.url || '',
+          quantity: item.itemqty,
+          price: item.itemrate,
+          variant: item.variantname,
+          variantId: item.pvid,
+          taxPercentage: parseFloat(item.itemtaxrate),
+          attributes: item.orderitemDetailsModel.map(attr => ({
+            id: attr.avid,
+            attributeId: attr.attributeid,
+            name: attr.avname,
+            price: 0 // Add price if available in your data
+          })),
+          isExistingItem: true, // Flag to identify existing items
+          orderItemStatus: item.orderitem_status // Add status to track editable items
+        };
+        addToCart(cartItem);
+      });
+
+      // Store order ID in AsyncStorage for reference
+      await AsyncStorage.setItem('editingOrderId', orderData.orderid);
+
+      // Navigate to cart
+      router.push('/cart');
+    } catch (error) {
+      console.error('Error preparing cart for edit:', error);
+      Alert.alert('Error', 'Failed to prepare order for editing');
     }
   };
 
@@ -461,7 +505,7 @@ export default function OrderDetails() {
                           {(item.orderitem_status == "26" || item.orderitem_status == "49") && 
                            orderData?.orderstatus != "31" && (
                             <Switch
-                              value={item.orderitem_status === "49"}
+                              value={item.orderitem_status == "49"}
                               onValueChange={() => handleMarkAsServed(item.oitemsid, item.orderitem_status)}
                               ios_backgroundColor="#F1C556"
                               trackColor={{ false: "#F1C556", true: "#20C06A" }}
@@ -508,6 +552,17 @@ export default function OrderDetails() {
                   >
                     <ThemedText style={styles.generateBillText}>Generate Bill</ThemedText>
                   </TouchableOpacity>
+              )}
+
+              {/* Add Edit button if order status allows editing */}
+              {orderData?.orderstatus == "30" && (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={handleEditOrder}
+                >
+                  <IconSymbol name="edit" size={20} color="#fff" />
+                  <ThemedText style={styles.editButtonText}>Edit Order</ThemedText>
+                </TouchableOpacity>
               )}
             </>
           )
@@ -797,5 +852,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '500',
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 8,
+    margin: 16,
+    justifyContent: 'center',
+    gap: 8,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

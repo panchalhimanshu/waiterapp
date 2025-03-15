@@ -50,11 +50,7 @@
     "extra": {
       "router": {
         "origin": false
-      },
-      "eas": {
-        "projectId": "07b55bb1-3a99-4e3c-b73b-d60e366765ec"
       }
-    },
-    "owner": "adasfrf"
+    }
   }
 }

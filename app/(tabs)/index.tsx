@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   },
   textContainer: {
     alignSelf: 'flex-start',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   welcomeText: {
     fontSize: 18,

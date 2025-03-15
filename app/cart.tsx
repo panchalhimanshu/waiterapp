@@ -6,9 +6,10 @@ import { useCart } from '@/context/CartContext';
 import CallFor from '@/utilities/CallFor';
 import { useAuth } from '@/utilities/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import GlobalPropperties from '@/utilities/GlobalPropperties';
 
 export default function CartScreen() {
-  const { cartItems, removeFromCart, updateQuantity, clearCart } = useCart();
+  const { cartItems, removeFromCart, updateQuantity, clearCart, addToCart } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { authData } = useAuth();
   const [responseData, setResponseData] = useState({
@@ -23,6 +24,11 @@ export default function CartScreen() {
   const [mobileNumberError, setMobileNumberError] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [originalOrderData, setOriginalOrderData] = useState(null);
+  const [orderNote, setOrderNote] = useState("");
+  const [showOrderNoteInput, setShowOrderNoteInput] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
   // Add useEffect to fetch stored values when component mounts
   useEffect(() => {
@@ -40,19 +46,79 @@ export default function CartScreen() {
     fetchResponseData();
   }, []);
 
+  // Add useEffect to check if we're editing an order
+  useEffect(() => {
+    const checkEditingOrder = async () => {
+      try {
+        const orderId = await AsyncStorage.getItem('editingOrderId');
+        setEditingOrderId(orderId);
+      } catch (error) {
+        console.error('Error checking editing order:', error);
+      }
+    };
+
+    checkEditingOrder();
+  }, []);
+
+  // Add useEffect to fetch original order data when editing
+  useEffect(() => {
+    const fetchOriginalOrder = async () => {
+      try {
+        const orderId = await AsyncStorage.getItem('editingOrderId');
+        if (orderId) {
+          const response = await CallFor(`orders/${orderId}`, 'GET', null, "Auth");
+          if (response.data.success) {
+            setOriginalOrderData(response.data.data);
+            setOrderNote(response.data.data.ordernote);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching original order:', error);
+      }
+    };
+
+    fetchOriginalOrder();
+  }, []);
+
+  // Modified useEffect for customer search
+  useEffect(() => {
+    // Clear any existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    // Search whenever mobileNumber changes and has 4 or more digits
+    if (mobileNumber && mobileNumber.length >= 4) {
+      const timeoutId = setTimeout(() => {
+        handleCustomerSearch(mobileNumber);
+      }, 300);
+      setSearchTimeout(timeoutId);
+    } else if (mobileNumber && mobileNumber.length < 4) {
+      // Clear results when number is less than 4 digits
+      setSearchResults([]);
+    }
+
+    // Cleanup timeout on unmount or when mobileNumber changes
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [mobileNumber]); // Trigger on every mobileNumber change
+
   const calculateSubtotal = () => {
     return cartItems.reduce((total, item) => {
-      const itemTotal = parseFloat(item.price) * item.quantity;
+      const itemTotal = parseFloat(item.price) * parseFloat(item.quantity);
       const attributesTotal = (item.attributes || []).reduce((sum, attr) => sum + (attr.price || 0), 0);
-      return total + itemTotal + (attributesTotal * item.quantity);
+      return total + itemTotal + (attributesTotal * parseFloat(item.quantity));
     }, 0);
   };
 
   const calculateTax = () => {
     return cartItems.reduce((total, item) => {
-      const itemTotal = parseFloat(item.price) * item.quantity;
+      const itemTotal = parseFloat(item.price) * parseFloat(item.quantity);
       const attributesTotal = (item.attributes || []).reduce((sum, attr) => sum + (attr.price || 0), 0);
-      const totalBeforeTax = itemTotal + (attributesTotal * item.quantity);
+      const totalBeforeTax = itemTotal + (attributesTotal * parseFloat(item.quantity));
       return total + (totalBeforeTax * (parseFloat(item.taxPercentage) / 100));
     }, 0);
   };
@@ -67,8 +133,7 @@ export default function CartScreen() {
       return;
     }
 
-    // Check if customer details are missing and show modal if needed
-    if (!responseData.uid && !responseData.bookingId && !responseData.tableId) {
+    if (!editingOrderId && !responseData.uid) {
       setShowCustomerModal(true);
       return;
     }
@@ -80,92 +145,216 @@ export default function CartScreen() {
       const taxTotal = calculateTax();
       const total = subtotal + taxTotal;
 
-      const orderData = {
-        ordertype: false,
-        isfa: false,
-        isinternalorder: true,
-        orderno: 0,
-        otherpartyorderno: "",
-        orderseriesid: 0,
-        orderdate: currentDate,
-        orderstatus: 0,
-        orderterms: 0,
-        orderremarks: "",
-        ordernote: "",
-        orderjurisidiction: "",
-        ordersupplystate: 0,
-        orderstate: 0,
-        orderitemtotal: subtotal,
-        ordertaxtotal: taxTotal,
-        orderledgertotal: 0,
-        orderdiscount: 0,
-        ordertotal: total,
-        ordertaxrate: 0,
-        deliverydate: currentDate,
-        buyerid: responseData.uid ? parseInt(responseData.uid) :117,
-        sellerid: authData.userData.uid,
-        consigneeid: 0,
-        promocode: "",
-        discpercentage: 0,
-        discamount: 0,
-        discbasis: 0,
-        ordertandc: "",
-        ordersource: 0,
-        ordercampaign: 0,
-        orderdeliverfrom: "1",
-        orderdeliverto: 0,
-        shippingruleid: 0,
-        table_id: responseData.tableId ? parseInt(responseData.tableId) : 0,
-        booking_id: responseData.bookingId ? parseInt(responseData.bookingId) : 0,
-        Serving_type: responseData.tableId ? 33 : 34,
-        orderitems: cartItems.map(item => ({
-          proid: item.productId,
-          pvid: item.variantId,
-          itemqty: item.quantity,
-          itemrate: parseFloat(item.price),
-          itemamount: parseFloat(item.price) * item.quantity,
-          itemtaxrate: item.taxPercentage.toString(),
-          itemtaxamount: (parseFloat(item.price) * item.quantity * (item.taxPercentage / 100)),
-          itemgrossamt: (parseFloat(item.price) * item.quantity) * (1 + (item.taxPercentage / 100)),
-          itemnote: "",
-          reqdeliverydate: currentDate,
-          expdeliverydate: currentDate,
-          itemuom: 0,
-          itemuomcfactor: 0,
-          itemselecteduom: 0,
-          deliveredqty: 0,
-          recivedqty: 0,
-          ledgerid: 0,
-          orderitemDetailsModel: item.attributes.map(attr => ({
-            oidid: 0,
-            attributeid: parseInt(attr.attributeId),
-            avid: attr.id
-          }))
-        })),
-        ordertaxdetails: [{
-          ordertaxtypeid: 0,
-          ordertaxbasis: 0,
-          ledgerid: 0,
-          ordertaxrate: null,
-          ordertaxableamount: subtotal,
-          ordertaxamount: taxTotal
-        }],
-        ordersalescommisions: []
-      };
+      let response;
+      if (editingOrderId && originalOrderData) {
+        // Prepare order items for edit
+        const orderItems = cartItems.map(item => {
+          const originalItem = originalOrderData?.orderitems?.find(
+            oi => oi.proid == item.productId && oi.pvid == item.variantId
+          );
 
-      const response = await CallFor('orders', 'POST', orderData, "Auth");
+          return {
+            oitemsid: originalItem?.oitemsid || "0",
+            orderid: editingOrderId || "0",
+            proid: item.productId,
+            pvid: item.variantId,
+            reqdeliverydate: currentDate,
+            expdeliverydate: currentDate,
+            itemuom: "0",
+            itemuomcfactor: "0",
+            itemselecteduom: "0",
+            itemqty: parseInt(item.quantity),
+            deliveredqty: "0",
+            recivedqty: "0",
+            itemrate: item.price.toString(),
+            itemamount: (parseFloat(item.price) * item.quantity).toFixed(2),
+            itemtaxrate: item.taxPercentage.toString(),
+            itemtaxamount: parseFloat((parseFloat(item.price) * item.quantity * (item.taxPercentage / 100)).toFixed(2)),
+            itemgrossamt: parseFloat(((parseFloat(item.price) * item.quantity) * (1 + (item.taxPercentage / 100))).toFixed(2)),
+            itemnote: "",
+            ledgerid: "0",
+            isdeleted: false,
+            createdby: "17",
+            createddate: currentDate,
+            modifiedby: null,
+            modifieddate: null,
+            deletedby: null,
+            deleteddate: null,
+            isapproved: null,
+            approvedby: null,
+            approveddate: null,
+            orderitem_status: originalItem?.orderitem_status || item.orderItemStatus || "28",
+            itemname: item.name,
+            orderitemDetailsModel: item.attributes.map(attr => {
+              const originalAttr = originalItem?.orderitemDetailsModel?.find(
+                oa => oa.attributeid == attr.attributeId && oa.avid == attr.id
+              );
+
+              return {
+                attributeid: attr.attributeId,
+                avid: attr.id,
+                attributename: attr.name,
+                avname: originalAttr?.avname || attr.value || ""
+              };
+            })
+          };
+        });
+
+        const orderData = {
+          orderid: editingOrderId,
+          ordertype: false,
+          isfa: false,
+          uoid: "50",
+          orderno: 0,
+          otherpartyorderno: "",
+          orderseriesid: "0",
+          orderdate: currentDate,
+          orderstatus: "30",
+          orderterms: "0",
+          orderremarks: "",
+          ordernote: orderNote || null,
+          orderjurisidiction: "",
+          ordersupplystate: "0",
+          orderstate: "0",
+          orderitemtotal: subtotal.toFixed(2),
+          ordertaxtotal: taxTotal.toFixed(2),
+          orderledgertotal: "0",
+          orderdiscount: "0",
+          ordertotal: total.toFixed(2),
+          ordertaxrate: originalOrderData.ordertaxrate || 22,
+          deliverydate: currentDate,
+          buyerid: originalOrderData.buyerid,
+          sellerid: originalOrderData.sellerid,
+          consigneeid: "0",
+          promocode: "",
+          discpercentage: "0",
+          discamount: "0",
+          discbasis: "0",
+          ordertandc: "",
+          ordersource: "0",
+          ordercampaign: "0",
+          orderdeliverfrom: "1",
+          orderdeliverto: "0",
+          shippingruleid: "0",
+          isinternalorder: true,
+          isdeleted: false,
+          createdby: "17",
+          createddate: currentDate,
+          modifiedby: null,
+          modifieddate: null,
+          deletedby: null,
+          deleteddate: null,
+          isapproved: null,
+          approvedby: null,
+          approveddate: null,
+          paymentstatus: null,
+          shippingstatus: null,
+          materialrequestid: null,
+          table_id: originalOrderData.table_id,
+          booking_id: originalOrderData.booking_id,
+          serving_type: originalOrderData.serving_type,
+          orderitems: orderItems,
+          ordertaxdetails: [{
+            orderid: editingOrderId,
+            ordertaxtypeid: "0",
+            ordertaxbasis: "0",
+            ledgerid: "0",
+            ordertaxrate: null,
+            ordertaxableamount: subtotal.toFixed(2),
+            ordertaxamount: taxTotal.toFixed(2),
+            isdeleted: false,
+            createdby: "17",
+            createddate: currentDate,
+            modifiedby: null,
+            modifieddate: null,
+            deletedby: null,
+            deleteddate: null,
+            isapproved: null,
+            approvedby: null,
+            approveddate: null
+          }],
+          ordersalescommisions: []
+        };
+
+        response = await CallFor(`orders/${editingOrderId}`, 'PUT', orderData, "Auth");
+      } else {
+        // Original new order creation logic
+        const orderData = {
+          ordertype: false,
+          isfa: false,
+          isinternalorder: true,
+          orderno: 0,
+          otherpartyorderno: "",
+          orderseriesid: 0,
+          orderdate: currentDate,
+          orderstatus: 0,
+          orderterms: 0,
+          orderremarks: "",
+          ordernote: orderNote || "",
+          orderjurisidiction: "",
+          ordersupplystate: 0,
+          orderstate: 0,
+          orderitemtotal: subtotal,
+          ordertaxtotal: taxTotal,
+          orderledgertotal: 0,
+          orderdiscount: 0,
+          ordertotal: total,
+          ordertaxrate: 0,
+          deliverydate: currentDate,
+          buyerid: responseData.uid ? parseInt(responseData.uid) : 0,
+          sellerid: authData.userData.uid,
+          consigneeid: 0,
+          promocode: "",
+          discpercentage: 0,
+          discamount: 0,
+          discbasis: 0,
+          ordertandc: "",
+          ordersource: 0,
+          ordercampaign: 0,
+          orderdeliverfrom: "1",
+          orderdeliverto: 0,
+          shippingruleid: 0,
+          table_id: responseData.tableId ? parseInt(responseData.tableId) : 0,
+          booking_id: responseData.bookingId ? parseInt(responseData.bookingId) : 0,
+          Serving_type: responseData.tableId ? 33 : 34,
+          orderitems: cartItems.map(item => ({
+            proid: item.productId,
+            pvid: item.variantId,
+            itemqty: parseInt(item.quantity),
+            itemrate: item.price,
+            itemtaxrate: item.taxPercentage,
+            itemname: item.name,
+            orderitemDetailsModel: item.attributes.map(attr => ({
+              attributeid: attr.attributeId,
+              avid: attr.id,
+              attributename: attr.name,
+              avname: attr.value || ""
+            }))
+          })),
+          ordertaxdetails: [{
+            ordertaxtypeid: 0,
+            ordertaxbasis: 0,
+            ledgerid: 0,
+            ordertaxrate: null,
+            ordertaxableamount: subtotal,
+            ordertaxamount: taxTotal
+          }],
+          ordersalescommisions: []
+        };
+
+        response = await CallFor('orders', 'POST', orderData, "Auth");
+      }
 
       if (!response.data.success) {
         throw new Error('Failed to submit order');
       }
 
       clearCart();
-      // Clear stored response data after successful order
+      await AsyncStorage.removeItem('editingOrderId');
       await AsyncStorage.removeItem('responseData');
+
       router.replace('/ordermenu');
-      Alert.alert('Success', 'Your order has been placed successfully!', [
-        { text: 'OK', onPress: () => router.replace('/ordermenu') }
-      ]);
+      Alert.alert('Success', editingOrderId ? 'Order has been updated successfully!' : 'Order has been created successfully!');
     } catch (error) {
       Alert.alert('Error', 'Failed to submit order. Please try again.');
       console.error('Order submission error:', error);
@@ -174,22 +363,22 @@ export default function CartScreen() {
     }
   };
 
+  // Update handleCustomerSearch to handle empty results
   const handleCustomerSearch = async (searchTerm) => {
-    if (searchTerm.length >= 4) {
-      try {
-        const response = await CallFor(
-          `users/search-customer/${searchTerm}`,
-          "GET",
-          null,
-          "Auth"
-        );
-        if (response.data.success) {
-          setSearchResults(response.data.data);
-        }
-      } catch (error) {
-        console.error('Search error:', error);
+    try {
+      const response = await CallFor(
+        `users/search-customer/${searchTerm}`,
+        "GET",
+        null,
+        "Auth"
+      );
+      if (response.data.success) {
+        setSearchResults(response.data.data);
+      } else {
+        setSearchResults([]);
       }
-    } else {
+    } catch (error) {
+      console.error('Search error:', error);
       setSearchResults([]);
     }
   };
@@ -254,6 +443,33 @@ export default function CartScreen() {
     }
   };
 
+  const handleCancelEdit = async () => {
+    // Show confirmation alert
+    Alert.alert(
+      "Cancel Edit",
+      "Are you sure you want to cancel editing this order?",
+      [
+        {
+          text: "No",
+          style: "cancel",
+          onPress: () => {} // Empty function to just dismiss the alert
+        },
+        {
+          text: "Yes",
+          onPress: async () => {
+            // Clear cart and editing state
+            clearCart();
+            await AsyncStorage.removeItem('editingOrderId');
+            await AsyncStorage.removeItem('responseData');
+            // Navigate back to order menu
+            router.replace('/ordermenu');
+          }
+        }
+      ],
+      { cancelable: true } // Allows dismissing by tapping outside
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -263,6 +479,14 @@ export default function CartScreen() {
           <IconSymbol name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.title}>Cart</Text>
+        {editingOrderId && (
+          <TouchableOpacity 
+            style={styles.cancelEditButton}
+            onPress={handleCancelEdit}
+          >
+            <Text style={styles.cancelEditText}>Cancel Edit</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
       <ScrollView style={styles.content}>
@@ -281,7 +505,7 @@ export default function CartScreen() {
                     source={{ 
                       uri: item.image.startsWith('http') 
                         ? item.image 
-                        : `http://172.16.1.57:5004${item.image}` 
+                        : `${GlobalPropperties.viewdocument}${item.image}` 
                     }}
                     style={styles.itemImage}
                   />
@@ -296,7 +520,7 @@ export default function CartScreen() {
                           if (item.quantity <= 1) {
                             removeFromCart(item.id);
                           } else {
-                            updateQuantity(item.id, item.quantity - 1);
+                            updateQuantity(item.id, parseInt(item.quantity) - 1);
                           }
                         }}
                       >
@@ -305,7 +529,7 @@ export default function CartScreen() {
                       <Text style={styles.itemQuantity}>{item.quantity}</Text>
                       <TouchableOpacity 
                         style={styles.quantityButton}
-                        onPress={() => updateQuantity(item.id, item.quantity + 1)}
+                        onPress={() => updateQuantity(item.id, parseInt(item.quantity) + 1)}
                       >
                         <Text style={styles.quantityButtonText}>+</Text>
                       </TouchableOpacity>
@@ -313,11 +537,11 @@ export default function CartScreen() {
                     <Text style={styles.itemPrice}>₹{item.price}</Text>
                   </View>
                   {item.variant && (
-                    <Text style={styles.variantName}>{item.variant}</Text>
+                    <Text style={styles.variantName}>Variant: {item.variant}</Text>
                   )}
-                  {item.attributes?.map((attr, index) => (
-                    <View key={index} style={styles.attributeRow}>
-                      <Text style={styles.attributeName}>{attr.name}</Text>
+               <Text>Customize : </Text> {item.attributes?.map((attr, index) => (
+                    <View key={index} style={styles.attributeRow}> 
+                    <Text style={styles.attributeName}> {attr.name}</Text>
                       <Text style={styles.attributePrice}>
                         {attr.price > 0 ? `₹${attr.price}` : ''}
                       </Text>
@@ -326,6 +550,42 @@ export default function CartScreen() {
                 </View>
               </View>
             ))}
+
+            <View style={styles.actionRow}>
+              {showOrderNoteInput ? (
+                <View style={styles.orderNoteInputContainer}>
+                  <TextInput
+                    style={styles.orderNoteInput}
+                    placeholder="Enter order note"
+                    value={orderNote}
+                    onChangeText={setOrderNote}
+                    onBlur={() => {
+                      if (!orderNote.trim()) {
+                        setShowOrderNoteInput(false);
+                      }
+                    }}
+                    autoFocus
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.orderNoteButton}
+                  onPress={() => setShowOrderNoteInput(true)}
+                >
+                  <Text style={styles.orderNoteButtonText}>
+                    {orderNote ? orderNote : "Order Note"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+                <TouchableOpacity 
+                  style={styles.addNewItemButton}
+                  onPress={() => router.push('/ordermenu')}
+                >
+                  <IconSymbol name="add" size={20} color="#fff" />
+                  <Text style={styles.addNewItemText}>Add New Item</Text>
+                </TouchableOpacity>
+            </View>
 
             <View style={styles.summary}>
               <View style={styles.summaryRow}>
@@ -361,7 +621,7 @@ export default function CartScreen() {
           disabled={isSubmitting || cartItems.length === 0}
         >
           <Text style={styles.submitButtonText}>
-            {isSubmitting ? 'Submitting...' : 'Submit Order'}
+            {isSubmitting ? 'Confirm Order' : 'Confirm Order'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -388,35 +648,36 @@ export default function CartScreen() {
                   style={styles.input}
                   placeholder="Enter Phone Number"
                   value={mobileNumber}
-                  onChangeText={(text) => {
-                    setMobileNumber(text);  
-                    handleCustomerSearch(text);
-                  }}
+                  onChangeText={setMobileNumber}
                   keyboardType="phone-pad"
+                  maxLength={10}
                 />
               </View>
               {mobileNumberError ? <Text style={styles.errorText}>{mobileNumberError}</Text> : null}
             </View>
 
-            {searchResults.length > 0 && (
-              <View style={styles.searchResults}>
-                <ScrollView style={styles.searchResultsScroll}>
-                  {searchResults.map((customer) => (
-                    <TouchableOpacity
-                      key={customer.uid}
-                      style={styles.searchResultItem}
-                      onPress={() => {
-                        setSelectedCustomer(customer);
-                        setCustomerName(customer.fullname);
-                        setMobileNumber(customer.mobno);
-                        setSearchResults([]);
-                      }}
-                    >
-                      <Text>{customer.fullname} - {customer.mobno}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+            {searchResults.length > 0 && !selectedCustomer && (
+              <ScrollView style={styles.customerList}>
+                {searchResults.map((customer) => (
+                  <TouchableOpacity
+                    key={customer.uid}
+                    style={styles.customerItem}
+                    onPress={() => {
+                      setSelectedCustomer(customer);
+                      setCustomerName(customer.fullname);
+                      setMobileNumber(customer.mobno);
+                      setSearchResults([]);
+                    }}
+                  >
+                    <Text style={styles.customerName}>
+                      {customer.fullname}
+                    </Text>
+                    <Text style={styles.customerPhone}>
+                      {customer.mobno}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
 
             <View style={styles.inputContainer}>
@@ -468,6 +729,7 @@ const styles = StyleSheet.create({
     paddingTop: 25,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    justifyContent: 'space-between',
   },
   backButton: {
     marginRight: 16,
@@ -475,6 +737,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
+    flex: 1,
+    marginLeft: 16,
   },
   content: {
     flex: 1,
@@ -526,7 +790,8 @@ const styles = StyleSheet.create({
   quantityButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: 'green',
+
   },
   itemQuantity: {
     marginHorizontal: 8,
@@ -543,6 +808,7 @@ const styles = StyleSheet.create({
   },
   attributeRow: {
     flexDirection: 'row',
+    flexWrap:'nowrap',
     justifyContent: 'space-between',
     marginTop: 4,
   },
@@ -627,6 +893,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
+    position: 'relative',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -640,6 +907,8 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     marginBottom: 16,
+    position: 'relative',
+    zIndex: 1,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -693,19 +962,83 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  searchResults: {
-    maxHeight: 150,
-    marginVertical: 8,
+  customerList: {
+    maxHeight: 160,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
+    marginTop: 4,
   },
-  searchResultsScroll: {
-    flex: 1,
-  },
-  searchResultItem: {
+  customerItem: {
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  customerName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  customerPhone: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  cancelEditButton: {
+    backgroundColor: '#ff4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 'auto',
+  },
+  cancelEditText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 15,
+    gap: 12,
+  },
+  orderNoteButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  orderNoteButtonText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  orderNoteInputContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  orderNoteInput: {
+    padding: 12,
+    fontSize: 14,
+  },
+  addNewItemButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 8,
+    minWidth: 140,
+  },
+  addNewItemText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 }); 

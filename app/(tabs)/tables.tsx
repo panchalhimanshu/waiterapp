@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions } from 'react-native';
 import { useState, useEffect } from 'react';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -54,6 +54,9 @@ export default function TablesScreen() {
   const [isInputChanged, setIsInputChanged] = useState(false);
   const [apiError, setApiError] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [queueData, setQueueData] = useState(null);
+  const [queueId, setQueueId] = useState('');
+  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
 
   const fetchTables = async () => {
     setLoading(true);
@@ -86,6 +89,76 @@ export default function TablesScreen() {
       fetchTables();
     }, [])
   );
+
+  useEffect(() => {
+    // Check for queue data when component mounts
+    const checkQueueData = async () => {
+      try {
+        const storedData = await AsyncStorage.getItem('queueData');
+        if (storedData) {
+          const parsedData = JSON.parse(storedData);
+          setQueueData(parsedData);
+          // Pre-fill the form with queue data
+          setMobileNumber(parsedData.guest_number || '');
+          setCustomerName(parsedData.guest_name || '');
+          setGuestCount(parsedData.guest_count || 1);
+          setQueueId(parsedData.qid);
+          // Clear the stored data immediately
+          await AsyncStorage.removeItem('queueData');
+        } else {
+          // Clear all form fields if no queue data exists
+          setQueueData(null);
+          setMobileNumber('');
+          setCustomerName('');
+          setGuestCount(1);
+          setQueueId('');
+          setSelectedCustomer(null);
+          setMergeTableIds([]);
+          setIsInputChanged(false);
+          setApiError('');
+        }
+      } catch (error) {
+        console.error('Error reading queue data:', error);
+      }
+    };
+
+    checkQueueData();
+  }, [showBookingModal]); // Add showBookingModal as a dependency
+
+  // Separate useEffect for searching customers
+  useEffect(() => {
+    // Search customers if initial mobile number exists and is >= 4 digits
+    if (mobileNumber && mobileNumber.length >= 4) {
+      searchCustomers(mobileNumber);
+    }
+  }, [mobileNumber]); // Run when mobileNumber changes
+
+  useEffect(() => {
+    const updateLayout = () => {
+      setScreenWidth(Dimensions.get('window').width);
+    };
+
+    Dimensions.addEventListener('change', updateLayout);
+    return () => {
+      // Clean up event listener
+      // Note: For newer React Native versions, the cleanup might not be necessary
+      if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateLayout);
+      }
+    };
+  }, []);
+
+  const showTableAssignmentPopup = (guest: any) => {
+    // When a guest is assigned from queue, pre-fill the booking modal
+    if (guest) {
+      setSelectedTable(null); // Reset any selected table
+      setMobileNumber(guest.guest_number || '');
+      setCustomerName(guest.guest_name || '');
+      setGuestCount(guest.guest_count || 1);
+      setShowBookingModal(true);
+      setQueueId(guest.qid);
+    }
+  };
 
   const getStatusColors = (status: string) => {
     switch (status) {
@@ -280,7 +353,6 @@ export default function TablesScreen() {
     setIsInputChanged(true);
     setApiError("");
     setSelectedCustomer(null);
-    searchCustomers(value);
   };
 
   const handleCustomerSelect = (customer: any) => {
@@ -508,7 +580,15 @@ export default function TablesScreen() {
                 key={table.table_id} 
                 style={[
                   styles.tableWrapper,
-                  { width: table.capacity > 8 ? '100%' : '48%' } // Adjusted width percentages
+                  { 
+                    width: screenWidth >= 768 // tablet breakpoint
+                      ? table.capacity > 8 
+                        ? '32%'  // Large tables show 3 per row on tablet
+                        : '24%'  // Normal tables show 4 per row on tablet
+                      : table.capacity > 8
+                        ? '100%' // Large tables show 1 per row on mobile
+                        : '48%'  // Normal tables show 2 per row on mobile
+                  }
                 ]}
               >
                 <TableWithChairs
@@ -733,11 +813,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     padding: 8,
+    gap: 8,
   },
   tableWrapper: {
-    marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   table: {
     justifyContent: 'center',

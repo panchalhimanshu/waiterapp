@@ -1,11 +1,12 @@
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -15,6 +16,14 @@ export default function TabLayout() {
   const shouldShowTabBar = pathname != '/';
 
   const getScreenKey = (name: string) => `${name}-${pathname == `/${name}` ? 'active' : 'inactive'}`;
+
+  // useEffect(() => {
+  //   if (pathname != '/queue' && pathname != '/tables') {
+  //     AsyncStorage.removeItem('queueData')
+  //       .then(() => console.log('queueData removed'))
+  //       .catch((error) => console.error('Failed to remove queueData', error));
+  //   }
+  // }, [pathname]);
 
   return (
     <Tabs
@@ -63,6 +72,14 @@ export default function TabLayout() {
         key={getScreenKey('tables')}
       />
       <Tabs.Screen
+        name="queue"
+        options={{
+          title: 'Queue',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="queue" color={color} />,
+        }}
+        key={getScreenKey('queue')}
+      />
+      <Tabs.Screen
         name="ordermenu"
         options={{
           title: 'Menu',
@@ -91,7 +108,7 @@ const styles = StyleSheet.create({
     transition: 'all 0.2s ease',
   },
   activeTab: {
-    transform: [{ scale: 1.1 }],
+    transform: [{ scale: 1.2 }],
     shadowColor: '#4CAF50',
     shadowOffset: {
       width: 0,

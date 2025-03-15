@@ -15,6 +15,7 @@ export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationD
   );
   const [selectedAttributes, setSelectedAttributes] = useState<{[key: string]: string}>({});
   const { addToCart } = useCart();
+  const [quantity, setQuantity] = useState(1);
 
   React.useEffect(() => {
     if (item?.hasvarient && item?.variants[0]?.pvamappings) {
@@ -121,6 +122,13 @@ export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationD
     ));
   };
 
+  const handleQuantityChange = (change: number) => {
+    const newQuantity = quantity + change;
+    if (newQuantity >= 1) {
+      setQuantity(newQuantity);
+    }
+  };
+
   const handleAddToCart = () => {
     if (!item) return;
 
@@ -135,7 +143,7 @@ export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationD
       productId: item.id,
       name: item.name,
       image: item.image,
-      quantity: 1,
+      quantity: quantity,
       price: selectedVariantDetails.pvsalesprice,
       variant: selectedVariantDetails.pvname,
       variantId: selectedVariantDetails.pvid,
@@ -179,6 +187,21 @@ export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationD
             {renderAttributes()}
           </ScrollView>
           <View style={styles.footer}>
+            <View style={styles.quantityContainer}>
+              <TouchableOpacity 
+                style={styles.quantityButton} 
+                onPress={() => handleQuantityChange(-1)}
+              >
+                <Text style={styles.quantityButtonText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.quantityText}>{quantity}</Text>
+              <TouchableOpacity 
+                style={styles.quantityButton} 
+                onPress={() => handleQuantityChange(1)}
+              >
+                <Text style={styles.quantityButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity 
               style={styles.addButton}
               onPress={handleAddToCart}
@@ -294,8 +317,37 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quantityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+  },
+  quantityButton: {
+    padding: 8,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantityButtonText: {
+    fontSize: 20,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  quantityText: {
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    minWidth: 40,
+    textAlign: 'center',
   },
   addButton: {
+    flex: 1,
     backgroundColor: '#4CAF50',
     padding: 16,
     borderRadius: 8,

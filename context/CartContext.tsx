@@ -16,6 +16,8 @@ interface CartItem {
     name: string;
     price: number;
   }>;
+  isExistingItem?: boolean;
+  orderItemStatus?: string;
 }
 
 interface CartContextType {
@@ -55,20 +57,30 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addToCart = (newItem: CartItem) => {
     setCartItems(prevItems => {
-      // Find existing item with same product, variant, and attributes
-      const existingItemIndex = prevItems.findIndex(item => areItemsEqual(item, newItem));
+      // Find existing items with same product, variant, and attributes
+      const existingItems = prevItems.filter(item => areItemsEqual(item, newItem));
 
-      if (existingItemIndex !== -1) {
-        // If item exists, update quantity
-        return prevItems.map((item, index) => 
-          index == existingItemIndex 
-            ? { ...item, quantity: item.quantity + newItem.quantity }
-            : item
-        );
-      } else {
-        // If item doesn't exist, add new item
-        return [...prevItems, newItem];
+      if (existingItems.length > 0) {
+        // Find item with status 28 (if exists)
+        const pendingItem = existingItems.find(item => item.orderItemStatus == "28");
+
+        if (pendingItem) {
+          // If there's a pending item, update its quantity
+          return prevItems.map(item => 
+            item.id == pendingItem.id
+              ? { ...item, quantity: parseInt(item.quantity) + parseInt(newItem.quantity) }
+              : item
+          );
+        }
       }
+
+      // If no pending item found or no matching items, add as new item with status 28
+      return [...prevItems, { 
+        ...newItem, 
+        orderItemStatus: "28",
+        isExistingItem: false,
+        id: Math.random().toString() // Generate new ID for new items
+      }];
     });
   };
 

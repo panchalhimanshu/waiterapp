@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',
-    paddingRight: 16,
+    paddingRight: 0,
   },
   headerButton: {
     padding: 8,

@@ -6,6 +6,7 @@ import { CustomizationDrawer } from '@/components/CustomizationDrawer';
 import { CommonHeader } from '@/components/CommonHeader';
 import { router } from "expo-router";
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import GlobalPropperties from "@/utilities/GlobalPropperties";
 
 const categories = [
   { name: "Best Seller", id: 0 },
@@ -122,7 +123,7 @@ const MenuScreen = () => {
       onPress={() => handleItemPress(item)}
     >
       <Image 
-        source={{ uri: `http://172.16.1.57:5004${item.image}` }}
+        source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
         style={styles.gridImage}
       />
       <TouchableOpacity 
@@ -147,7 +148,7 @@ const MenuScreen = () => {
       onPress={() => handleItemPress(item)}
     >
       <Image 
-        source={{ uri: `http://172.16.1.57:5004${item.image}` }}
+        source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
         style={styles.listImage}
       />
       <View style={styles.listContent}>

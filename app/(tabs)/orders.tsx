@@ -14,6 +14,9 @@ import CallFor from "@/utilities/CallFor";
 import StatusMapper from "@/utilities/StatusMapper";
 import { useAuth } from '@/utilities/AuthContext';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { useCart } from '@/context/CartContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 
 export default function OrdersScreen() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -34,6 +37,7 @@ export default function OrdersScreen() {
     3: 32
   };
   const [touchStart, setTouchStart] = useState(0);
+  const { clearCart, addToCart } = useCart();
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -55,6 +59,7 @@ export default function OrdersScreen() {
           order_status: tabStatusMap[selectedTab],
           page: 1,
           limit: 10000,
+          include_product_images: true
         }),
         'Auth'
       );
@@ -64,8 +69,6 @@ export default function OrdersScreen() {
       }
 
       setOrders(response?.data?.data?.orders || []);
-      setHasMore(response?.data?.data?.orders?.length === 15);
-      
     } catch (error) {
       console.error(error);
       setError('Failed to fetch order data.');
@@ -145,6 +148,67 @@ export default function OrdersScreen() {
     }
   };
 
+  const handleEditOrder = async (order: any) => {
+    try {
+      console.log('Starting edit order process:', order);
+      await clearCart();
+
+      // Fetch additional product details if needed
+      for (const item of order.orderitems) {
+        if (!item.pvid || !item.proid || !item.itemname) {
+          continue;
+        }
+
+        // Fetch product details to get the image
+        try {
+          const productResponse = await CallFor(
+            `products/${item.proid}`,
+            'GET',
+            null,
+            'Auth'
+          );
+
+          const productImage = productResponse?.data?.data?.product_image_url;
+
+          const cartItem = {
+            id: item.pvid,
+            productId: item.proid,
+            name: item.itemname,
+            image: productImage, // Use the fetched product image
+            quantity: parseInt(item.itemqty) || 1,
+            price: parseFloat(item.itemrate) || 0,
+            variant: item.variantname || '',
+            variantId: item.pvid,
+            taxPercentage: parseFloat(item.itemtaxrate || '0'),
+            attributes: (item.orderitemDetailsModel || []).map((attr: any) => ({
+              id: attr.avid || '',
+              attributeId: attr.attributeid || '',
+              name: attr.avname || '',
+              price: 0
+            })),
+            isExistingItem: true,
+            orderItemStatus: item.orderitem_status || ''
+          };
+
+          await addToCart(cartItem);
+          console.log('Item added to cart:', cartItem);
+        } catch (error) {
+          console.error('Error fetching product details:', error);
+        }
+      }
+
+      await AsyncStorage.setItem('editingOrderId', order.orderid.toString());
+      router.push('/cart');
+    } catch (error) {
+      console.error('Error in handleEditOrder:', error);
+      Alert.alert(
+        'Error',
+        'Failed to prepare order for editing. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const renderOrderItem = ({ item: order }: { item: any }) => (
     <ThemedView style={styles.orderCard}>
       <View style={styles.orderHeader}>
@@ -212,7 +276,6 @@ export default function OrdersScreen() {
         <TouchableOpacity 
           style={styles.primaryButton}
           onPress={() => {
-            console.log("Navigating to order details:", order.orderid);
             router.push({
               pathname: "/(details)/[id]",
               params: { id: order.orderid }
@@ -224,8 +287,19 @@ export default function OrdersScreen() {
         {order?.orderstatus != "32" && (
           <TouchableOpacity 
             style={styles.secondaryButton}
+            onPress={() => {
+              if (order?.orderstatus == "31") {
+                // Handle print bill
+                console.log("Print bill");
+              } else {
+                handleEditOrder(order);
+              }
+            }}
           >
-            <ThemedText style={styles.buttonText}>
+            <ThemedText style={[
+              styles.buttonText,
+              { color: order?.orderstatus == "31" ? '#fff' : '#000' }
+            ]}>
               {order?.orderstatus == "31" ? "Print Bill" : "Edit Order"}
             </ThemedText>
           </TouchableOpacity>
@@ -418,8 +492,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: {
-    color: '#fff',
     fontWeight: '500',
+    color: '#fff',
   },
   seeMoreButton: {
     marginTop: 8,
