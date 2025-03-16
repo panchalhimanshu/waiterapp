@@ -17,6 +17,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useCart } from '@/context/CartContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
+import { FlatListRefresh } from '@/components/ScrollRefresh';
 
 export default function OrdersScreen() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -366,7 +367,7 @@ export default function OrdersScreen() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <FlatList
+        <FlatListRefresh
           data={orders}
           renderItem={renderOrderItem}
           keyExtractor={(item, index) => index.toString()}
@@ -374,19 +375,15 @@ export default function OrdersScreen() {
             if (!loading && hasMore) {
               const nextPage = page + 1;
               setPage(nextPage);
-              fetchOrders(nextPage);
+              fetchOrders();
             }
           }}
           onEndReachedThreshold={0.5}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setPage(1);
-                fetchOrders(1);
-              }}
-            />
-          }
+          refreshing={refreshing}
+          onRefresh={() => {
+            setPage(1);
+            fetchOrders();
+          }}
         />
       </View>
       {loading && <LoadingSpinner />}

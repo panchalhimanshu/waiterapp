@@ -21,8 +21,8 @@ const LoginScreen = () => {
       }),"withoutAuth")
 
       const data = await response.data;
-
-      if (data) {
+console.log(data.data,"data");
+      if (data.data.roleid == "3") {
         // AuthContext में डेटा सेट करें
         setAuthData({
           token: data.data.token,

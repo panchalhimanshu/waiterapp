@@ -9,7 +9,6 @@ interface CustomizationDrawerProps {
 }
 
 export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationDrawerProps) => {
-  console.log(item,'item')
   const [selectedVariant, setSelectedVariant] = useState<string | null>(
     item?.hasvarient ? item.variants[0]?.pvid : null
   );
@@ -161,7 +160,6 @@ export const CustomizationDrawer = ({ isVisible, item, onClose }: CustomizationD
       }).filter(attr => attr.name)
     };
 
-    console.log('Adding to cart:', cartItem);
     addToCart(cartItem);
     onClose();
   };

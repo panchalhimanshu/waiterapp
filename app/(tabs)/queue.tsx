@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, TextInput, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, TextInput, Text, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Yup from 'yup';
 import { useRouter } from 'expo-router';
@@ -9,11 +9,27 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import Toast from 'react-native-toast-message';
 import CallFor from '@/utilities/CallFor';
 
+// Add waiting time calculation function
+const calculateWaitingTime = (createdAt: string): string => {
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffInMinutes = Math.floor((now.getTime() - created.getTime()) / (1000 * 60));
+  
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes}m`;
+  } else {
+    const hours = Math.floor(diffInMinutes / 60);
+    const minutes = diffInMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }
+};
+
 export default function QueueScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   
   const [queue, setQueue] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [guestCount, setGuestCount] = useState('');
@@ -189,9 +205,25 @@ export default function QueueScreen() {
     }
   };
 
+  // Add onRefresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchQueue();
+    setRefreshing(false);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: Colors[colorScheme].background }]}>
-      <ScrollView>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#4CAF50']}
+            tintColor={Colors[colorScheme].text}
+          />
+        }
+      >
         {/* Add Guest Form */}
         <View style={styles.formContainer}>
           <Text style={[styles.title, { color: Colors[colorScheme].text }]}>Add to Queue</Text>
@@ -268,7 +300,7 @@ export default function QueueScreen() {
                       {guest.guest_name}
                     </Text>
                     <Text style={[styles.guestDetails, { color: Colors[colorScheme].text }]}>
-                      {guest.guest_count} guests • {guest.guest_number}
+                      {guest.guest_count} guests • {guest.guest_number} • Waiting: {calculateWaitingTime(guest.created_at)}
                       {guest.status === 1 && ' • Assigned'}
                     </Text>
                   </>

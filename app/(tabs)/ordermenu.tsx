@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, Image, FlatList, TouchableOpacity, StyleSheet, Modal, useWindowDimensions, ScrollView, GestureResponderEvent } from "react-native";
+import { View, Text, Image, FlatList, TouchableOpacity, StyleSheet, Modal, useWindowDimensions, ScrollView, GestureResponderEvent, RefreshControl } from "react-native";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import CallFor from "../../utilities/CallFor";
 import { CustomizationDrawer } from '@/components/CustomizationDrawer';
@@ -7,6 +7,7 @@ import { CommonHeader } from '@/components/CommonHeader';
 import { router } from "expo-router";
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import GlobalPropperties from "@/utilities/GlobalPropperties";
+import { FlatListRefresh } from '@/components/ScrollRefresh';
 
 const categories = [
   { name: "Best Seller", id: 0 },
@@ -25,11 +26,11 @@ const MenuScreen = () => {
   const [loading, setLoading] = useState(false);
   const [isGridView, setIsGridView] = useState(true);
   const [touchStart, setTouchStart] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
       // Get the route params
       const params = router.params as { bookingId?: string; tableId?: string; uid?: string };
 
-      console.log(params,"params")
 
   const getNumColumns = () => {
     if (width < 600) return 2;        // Mobile screens
@@ -117,24 +118,35 @@ const MenuScreen = () => {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchMenuItems();
+    setRefreshing(false);
+  };
+
   const renderGridItem = ({ item }: { item: any }) => (
     <TouchableOpacity 
       style={[styles.gridCard, { width: width / getNumColumns() - 16 }]}
       onPress={() => handleItemPress(item)}
     >
-      <Image 
-        source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
-        style={styles.gridImage}
-      />
-      <TouchableOpacity 
-        style={styles.addButton}
-        onPress={() => handleItemPress(item)}
-      >
-        <Text style={styles.addText}>+ Add</Text>
-      </TouchableOpacity>
-      <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <View style={styles.ratingPriceContainer}>
+      <View style={styles.gridImageContainer}>
+        <Image 
+          source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
+          style={styles.gridImage}
+          resizeMode="cover"
+        />
+        <View style={styles.gridOverlay}>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => handleItemPress(item)}
+          >
+            <Text style={styles.addText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.gridItemDetails}>
+        <Text style={styles.gridItemName} numberOfLines={1}>{item.name}</Text>
+        <View style={styles.gridRatingPriceContainer}>
           <Text style={styles.rating}>⭐ {item.rating}</Text>
           <Text style={styles.price}>₹{item.price}</Text>
         </View>
@@ -147,12 +159,15 @@ const MenuScreen = () => {
       style={styles.listCard}
       onPress={() => handleItemPress(item)}
     >
-      <Image 
-        source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
-        style={styles.listImage}
-      />
+      <View style={styles.listImageContainer}>
+        <Image 
+          source={{ uri: `${GlobalPropperties.viewdocument}${item.image}` }}
+          style={styles.listImage}
+          resizeMode="cover"
+        />
+      </View>
       <View style={styles.listContent}>
-        <Text style={styles.itemName}>{item.name}</Text>
+        <Text style={styles.listItemName} numberOfLines={2}>{item.name}</Text>
         <View style={styles.listDetails}>
           <Text style={styles.rating}>⭐ {item.rating}</Text>
           <Text style={styles.price}>₹{item.price}</Text>
@@ -192,7 +207,7 @@ const MenuScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Toggle View Button - Updated icons */}
+      {/* Toggle View Button */}
       <TouchableOpacity 
         style={styles.toggleButton}
         onPress={() => setIsGridView(!isGridView)}
@@ -210,12 +225,14 @@ const MenuScreen = () => {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <FlatList
+        <FlatListRefresh
           data={menuItems}
           keyExtractor={(item) => item.id.toString()}
           numColumns={isGridView ? getNumColumns() : 1}
           key={isGridView ? 'grid' : 'list'}
           renderItem={isGridView ? renderGridItem : renderListItem}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
         />
       </View>
 
@@ -335,33 +352,51 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-    padding: 8,
+    padding:8,
+    overflow: 'hidden',
+  },
+  listImageContainer: {
+    width: '40%', // 40% of the card width for image
   },
   listImage: {
-    width: 80,
-    height: 80,
+    width: '100%',
+    height: 100,
     borderRadius: 8,
   },
   listContent: {
     flex: 1,
-    marginLeft: 12,
+    padding: 10,
     justifyContent: 'space-between',
+  },
+  listItemName: {
+    fontWeight: "600",
+    fontSize: 16,
+    marginBottom: 8,
   },
   listDetails: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
   },
-  listAddButton: {
-    backgroundColor: '#222',
+  addButton: {
+    backgroundColor: '#4CAF50',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 5,
+    borderRadius: 20,
+  },
+  addText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  listAddButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   gridCard: {
     margin: 8,
-    padding: 8,
     backgroundColor: '#fff',
     borderRadius: 12,
     elevation: 3,
@@ -369,12 +404,41 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    overflow: 'hidden',
+  },
+  gridImageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 120, // Increased height for better image display
   },
   gridImage: {
     width: '100%',
-    height: 120,
-    borderRadius: 10,
-    marginBottom: 8,
+    height: '100%',
+    
+  },
+  gridOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    // backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  gridItemDetails: {
+    padding: 12,
+  },
+  gridItemName: {
+    fontWeight: "600",
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  gridRatingPriceContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
   menuItemsContainer: {
     flex: 1,

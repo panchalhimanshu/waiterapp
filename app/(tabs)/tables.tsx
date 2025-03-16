@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, RefreshControl } from 'react-native';
 import { useState, useEffect } from 'react';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureResponderEvent } from 'react';
+import { ScrollRefresh } from '@/components/ScrollRefresh';
 
 interface Table {
   table_id: number;
@@ -36,6 +37,7 @@ export default function TablesScreen() {
   const router = useRouter();
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloor, setSelectedFloor] = useState<number>(1);
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isBookingModalVisible, setIsBookingModalVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
@@ -57,6 +59,7 @@ export default function TablesScreen() {
   const [queueData, setQueueData] = useState(null);
   const [queueId, setQueueId] = useState('');
   const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchTables = async () => {
     setLoading(true);
@@ -283,7 +286,7 @@ export default function TablesScreen() {
           waiter_id: authData.userData.uid,
           merge_table_id: mergeTableIdsAsIntegers, // Send as array of integers
           uid: customeruid,
-          qid: null
+          qid: queueId
         }),
         "Auth"
       );
@@ -514,6 +517,33 @@ export default function TablesScreen() {
     );
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchTables();
+    setRefreshing(false);
+  };
+
+  const getStatusCode = (status: string): string => {
+    switch (status) {
+      case 'Available': return '35';
+      case 'Waiting': return '38';
+      case 'Occupied': return '37';
+      case 'Bill Settlement': return '39';
+      default: return '';
+    }
+  };
+
+  const handleFilterPress = (status: string) => {
+    // If already selected, clear the filter, otherwise set new filter
+    setSelectedFilter(selectedFilter == status ? null : status);
+  };
+
+  const getFilteredTables = (tables: Table[]) => {
+    if (!selectedFilter) return tables;
+    const statusCode = getStatusCode(selectedFilter);
+    return tables.filter(table => table.status == statusCode);
+  };
+
   return (
     <ThemedView style={styles.container}>
       <CommonHeader title="Table Booking" />
@@ -524,21 +554,53 @@ export default function TablesScreen() {
         style={styles.legendScroll}
       >
         <View style={styles.legend}>
-          <TouchableOpacity style={styles.legendItem}>
+          <TouchableOpacity 
+            style={[
+              styles.legendItem,
+              selectedFilter == 'Available' && styles.selectedLegendItem
+            ]}
+            onPress={() => handleFilterPress('Available')}
+          >
             <View style={[styles.legendDot, { backgroundColor: '#808080' }]} />
-            <ThemedText>Available</ThemedText>
+            <ThemedText style={selectedFilter == 'Available' && styles.selectedLegendText}>
+              Available
+            </ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.legendItem}>
+          <TouchableOpacity 
+            style={[
+              styles.legendItem,
+              selectedFilter == 'Waiting' && styles.selectedLegendItem
+            ]}
+            onPress={() => handleFilterPress('Waiting')}
+          >
             <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
-            <ThemedText>Waiting</ThemedText>
+            <ThemedText style={selectedFilter == 'Waiting' && styles.selectedLegendText}>
+              Waiting
+            </ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.legendItem}>
+          <TouchableOpacity 
+            style={[
+              styles.legendItem,
+              selectedFilter == 'Occupied' && styles.selectedLegendItem
+            ]}
+            onPress={() => handleFilterPress('Occupied')}
+          >
             <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
-            <ThemedText>Occupied</ThemedText>
+            <ThemedText style={selectedFilter == 'Occupied' && styles.selectedLegendText}>
+              Occupied
+            </ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.legendItem}>
+          <TouchableOpacity 
+            style={[
+              styles.legendItem,
+              selectedFilter == 'Bill Settlement' && styles.selectedLegendItem
+            ]}
+            onPress={() => handleFilterPress('Bill Settlement')}
+          >
             <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
-            <ThemedText>Bill Settlement</ThemedText>
+            <ThemedText style={selectedFilter == 'Bill Settlement' && styles.selectedLegendText}>
+              Bill Settlement
+            </ThemedText>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -569,37 +631,39 @@ export default function TablesScreen() {
         </View>
       </ScrollView>
 
-      <ScrollView 
+      <ScrollRefresh 
         style={styles.tablesContainer}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
         <View style={styles.tablesGrid}>
-          {floors
-            .find(floor => floor.floor_id == selectedFloor)
-            ?.tables.map((table) => (
-              <View 
-                key={table.table_id} 
-                style={[
-                  styles.tableWrapper,
-                  { 
-                    width: screenWidth >= 768 // tablet breakpoint
-                      ? table.capacity > 8 
-                        ? '32%'  // Large tables show 3 per row on tablet
-                        : '24%'  // Normal tables show 4 per row on tablet
-                      : table.capacity > 8
-                        ? '100%' // Large tables show 1 per row on mobile
-                        : '48%'  // Normal tables show 2 per row on mobile
-                  }
-                ]}
-              >
-                <TableWithChairs
-                  table={table}
-                  onPress={() => handleTablePress(table)}
-                  status={table.status}
-                />
-              </View>
-            ))}
+          {getFilteredTables(
+            floors.find(floor => floor.floor_id == selectedFloor)?.tables || []
+          ).map((table) => (
+            <View 
+              key={table.table_id} 
+              style={[
+                styles.tableWrapper,
+                { 
+                  width: screenWidth >= 768 // tablet breakpoint
+                    ? table.capacity > 8 
+                      ? '32%'  // Large tables show 3 per row on tablet
+                      : '24%'  // Normal tables show 4 per row on tablet
+                    : table.capacity > 8
+                      ? '100%' // Large tables show 1 per row on mobile
+                      : '48%'  // Normal tables show 2 per row on mobile
+                }
+              ]}
+            >
+              <TableWithChairs
+                table={table}
+                onPress={() => handleTablePress(table)}
+                status={table.status}
+              />
+            </View>
+          ))}
         </View>
-      </ScrollView>
+      </ScrollRefresh>
 
       <Modal
         visible={showBookingModal}
@@ -1070,5 +1134,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#666',
     marginTop: 2,
+  },
+  selectedLegendItem: {
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#000',
+  },
+  selectedLegendText: {
+    fontWeight: 'bold',
   },
 }); 
