@@ -10,31 +10,30 @@ import CallFor from "@/utilities/CallFor";
 const LoginScreen = () => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const { setAuthData } = useAuth();
 
   const handleSubmit = async () => {
     try {
-    
       const response = await CallFor("auth/login", "post",JSON.stringify({
-        email: id,
+        username: id,
         password,
       }),"withoutAuth")
 
       const data = await response.data;
-console.log(data.data,"data");
+      
       if (data.data.roleid == "3") {
-        // AuthContext में डेटा सेट करें
+        setErrorMessage('');
         setAuthData({
           token: data.data.token,
           userData: data.data
         });
-        
         router.replace('/tables');
       } else {
-        Alert.alert('Error', 'Invalid credentials');
+        setErrorMessage('Invalid credentials');
       }
     } catch (error) {
-      Alert.alert('Error', 'Something went wrong');
+      setErrorMessage('Something went wrong');
       console.error(error);
     }
   };
@@ -76,6 +75,10 @@ console.log(data.data,"data");
             onChangeText={setPassword}
           />
         </View>
+
+        {errorMessage ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
         
         <TouchableOpacity style={styles.loginButton} onPress={handleSubmit}>
           <Text style={styles.loginText}>Log In</Text>
@@ -144,6 +147,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+    textAlign: 'center',
+  },
+  errorText: {
+    color: 'red',
+    marginTop: 5,
+    marginBottom: 5,
     textAlign: 'center',
   },
 });

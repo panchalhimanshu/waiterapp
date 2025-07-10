@@ -51,9 +51,13 @@ const MenuScreen = () => {
         {
           proname: null,
           proconfig: 14,
-          catid: selectedCategory.id,
+          floor_id
+: 
+null,
+          catid: null,
           page: 1,
           limit: 1000,
+          warhouseid:98,
         },
         "Auth"
       );
